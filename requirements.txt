@@ -1,0 +1,10 @@
+# For Hugging Face models
+transformers>=4.42.0
+torch>=2.3.0
+accelerate>=0.31.0
+
+# For audio input and processing
+pyaudio
+soundfile
+numpy
+librosa

@@ -1,0 +1,47 @@
+Transcription Session - 2025-09-04 14:10:13
+==================================================
+
+[Refined] Patterns that appear by chance aren't very strong patterns. So then it will still be okay.
+
+[Refined] that as you increase the sample size, this will convert to.
+
+[Refined] So there's actually a very interesting topic for people who are in computer science about
+
+[Refined] really random processes. And I can't remember the name of this textbook and the
+
+[Refined] the header to the chapter about random processes. It was saying the generation of random numbers
+
+[Refined] is too important to leave to chance. This is how I got it because it should be strictly
+
+[Refined] That's a bit more. Yeah.
+
+[Refined] Nå, først og fremst, hva betyr det da, når det populære data er højt?
+
+[Refined] How do we know if there's an error or not?
+
+[Refined] We don't know our population. They don't have to know that. It's different.
+
+[Refined] Yeah, so we know that this is the case and we'll kind
+
+[Refined] I'll show this to you once we get more into sampling.
+
+[Refined] the beginning of the first quarter of our course, but we will pass it to you where we actually have
+
+[Refined] And then we will pull a sample from it. And we will see how it's
+
+[Refined] and as we increase the sample size, our statistic converges.
+
+[Refined] to the public within certain properties. So that's where a lot
+
+[Refined] statistical methods that say even if we can't gather big data, we know roughly how it's gonna
+
+[Refined] So basically we are just following the system.
+
+[Refined] Okay.
+
+[Refined] Yeah, yeah. So just kind of at this stage, all you can say is generally,
+
+[Refined] As our sample size increases, the sampling error decreases,
+
+[Refined] and our statistic becomes closer to our parameter.
+

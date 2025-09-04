@@ -1,0 +1,43 @@
+Transcription Session - 2025-09-04 14:20:16
+==================================================
+
+[Refined] Throw the right card or one the right card? One's the right card. So, would not, like, would not 45% have chosen the wrong card and then, like, the other 55% chosen the right card? Uh, so, it's the, the shade is the...
+
+[Refined] Oh, right. Oh, it's of a percent. Right, right. Yeah. Right, okay. Yeah.
+
+[Refined] And then the remainder, if we were to fill that in, would be the zero exam. Do we have any questions on that? So when we do our test and we have on the chart,
+
+[Refined] is an old test and exam. Usually you get what's called a supplement booklet, which will kind of give you the context of the data of the problems that you're going through, and then you get a textbook.
+
+[Refined] with the questions about that supplement. So in the workshop, we'll get in the process of having the supplement and then from there, pulling questions. So the supplement that we'll work with today, we'll use data from the LFS, which is the Canadian Labour Force Survey.
+
+[Refined] This is a survey conducted by Statistics Canada, which gathers metrics on the employment rate, the rate of participation, the unemployment rate, hours worked, salaries earned, and the information from the LFS is used to help inform
+
+[Refined] policy relevant questions relating to the state of the economy, the rate of the labor market, earnings, also even some kind of hold position in terms of employment in households. So for supplemental
+
+[Refined] we're going to just use one cross-section, which is the September 2021 labor force survey, which had 55,246 survey respondents. And from that data, we're going to work with three variables. First, a female dummy variable, which is
+
+[Refined] which is essentially employment status one, which is a W variable, which is equal to one if the respondent reported being employed and at work at a time of the service.
+
+[Refined] and zero if they did not. Similarly, MPS II is equal to one if the respondent reported being employed but absent for work at the time of the survey, and zero otherwise.
+
+[Refined] These two seem very similar. When the survey is asked, they ask essentially, are you employed and are you at work this week? So let's say, for example, you are employed and you're going to work that week or whatnot, you would be at PS1.
+
+[Refined] But say, for example, you are surveyed in, let's say, I know this one's typical, let's say you're surveyed in July, and you're a school teacher, right? You would say, I am employed, I have a job, but I'm not at work right now. You'd volunteer at this.
+
+[Refined] If you're away on leave, if you're on mat leave, if you're on holidays. So anytime where you have a job, you have a contract where you're expected to return to a job, but you're just not at the job the week of the survey, you're MPS2.
+
+[Refined] types of employed. Employed in attending work. Employed not attending work. You can also be unemployed where you don't have a job. Or you can be not in the labor force where it's like you don't have a job but you're also not looking for a job. Okay? So here, MPS
+
+[Refined] one and MPS two are just two out of four possible types of jobs that people can have. So I say this because sometimes students say, okay, well if you're a one, say if you're an MPS one, that means you're employed in that work. So they interpret the zero as
+
+[Refined] as being unemployed. But that's not the case, because it's kind of a catch-all for if you are FBS2 unemployed or not in the labor force. So the zero just means not whatever the one is. So with this information, we're going to do some
+
+[Refined] kind of like warm up the questions. Okay. So the first is, if we have three tabulations that are equally, and if there's two points
+
+[Refined] And then, what proportion of LFS respondents are an
+
+[Refined] Now, these two questions maybe only use about a third of the space on your workshop sheet, leaving the other two-thirds for the problem that we'll have after. Okay?
+
+[Refined] The TA and I will walk around if you have any questions. And if you need a sheet, please raise your hand.
+
