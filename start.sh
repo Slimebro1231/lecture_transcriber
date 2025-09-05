@@ -13,8 +13,16 @@ micromamba activate lecture-transcriber
 # Check if activation was successful
 if [ $? -eq 0 ]; then
     echo "Micromamba environment activated."
-    # Run the GUI application
-    python gui_transcriber.py
+    
+    # Check for lightweight mode argument
+    if [ "$1" = "--lightweight" ] || [ "$1" = "-l" ]; then
+        echo "Starting lightweight transcription system..."
+        python gui_lightweight.py
+    else
+        echo "Starting full transcription system..."
+        echo "Use --lightweight or -l for memory-optimized version"
+        python gui_transcriber.py
+    fi
 else
     echo "Failed to activate micromamba environment."
     exit 1

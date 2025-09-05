@@ -8,3 +8,6 @@ pyaudio
 soundfile
 numpy
 librosa
+
+# For memory monitoring
+psutil

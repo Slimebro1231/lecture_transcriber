@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Lightweight transcription engine with memory optimizations.
+Uses smaller models and aggressive memory management.
+"""
+
 import threading
 import queue
 import time
@@ -23,30 +29,27 @@ try:
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
-class TranscriptionEngine:
+class LightweightTranscriptionEngine:
     def __init__(self, update_callback):
         self.update_callback = update_callback
         
-        # Mac-optimized models (English-only)
-        self.streaming_model_id = "distil-whisper/distil-medium.en"
-        self.refining_model_id = "openai/whisper-large-v3"
+        # Use smaller, faster models to reduce memory usage
+        self.model_id = "openai/whisper-tiny.en"  # Much smaller than large-v3
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.torch_dtype = torch.float16 if torch.backends.mps.is_available() else torch.float32
 
-        # Pipelines will be initialized later
-        self.streaming_pipeline = None
-        self.refining_pipeline = None
+        # Single pipeline instead of two-pass
+        self.pipeline = None
 
-        # Audio settings - longer chunks for better sentence context
+        # Audio settings - shorter chunks to reduce memory
         self.sample_rate = 16000
-        self.chunk_duration = 15  # seconds of audio per chunk (longer for sentences)
+        self.chunk_duration = 5  # Shorter chunks (5 seconds instead of 15)
         self.chunk_samples = int(self.sample_rate * self.chunk_duration)
 
-        # Queues for multi-threading - limit size to prevent memory buildup
-        self.audio_queue = queue.Queue(maxsize=5)  # Limit to 5 chunks
-        self.refine_queue = queue.Queue(maxsize=3)  # Limit to 3 chunks
+        # Single queue with size limit
+        self.audio_queue = queue.Queue(maxsize=3)  # Very small queue
         
-        # Session persistence - simple TXT storage
+        # Session persistence
         self.transcripts_folder = "transcripts"
         if not os.path.exists(self.transcripts_folder):
             os.makedirs(self.transcripts_folder)
@@ -57,49 +60,38 @@ class TranscriptionEngine:
         )
         self.session_transcripts = []
         
-        # Sentence processing
-        self.sentence_buffer = ""  # Accumulate text until we find sentence boundaries
-        self.last_sentence_time = time.time()
-        
         # State
         self.is_running = False
         self.audio_buffer = np.array([], dtype=np.float32)
         
-        # Memory management
-        self.max_buffer_size = self.chunk_samples * 2  # Keep only 2 chunks worth
+        # Aggressive memory management
+        self.max_buffer_size = self.chunk_samples  # Only keep 1 chunk worth
         self.last_memory_check = time.time()
-        self.memory_check_interval = 30  # Check memory every 30 seconds
+        self.memory_check_interval = 10  # Check every 10 seconds
+        self.cleanup_interval = 60  # Force cleanup every 60 seconds
+        self.last_cleanup = time.time()
 
         if AUDIO_AVAILABLE:
             self.pyaudio_instance = pyaudio.PyAudio()
-            # Use system default microphone
             self.input_device_index = None
         
-        # Set up signal handler for graceful shutdown
+        # Set up signal handler
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _initialize_models(self):
-        """Load models on a background thread to keep GUI responsive."""
+    def _initialize_model(self):
+        """Load single lightweight model."""
         try:
-            self.update_callback("status", "Initializing streaming model (Distil-Whisper)...")
-            self.streaming_pipeline = pipeline(
+            self.update_callback("status", "Initializing lightweight model (Whisper-Tiny)...")
+            self.pipeline = pipeline(
                 "automatic-speech-recognition",
-                model=self.streaming_model_id,
+                model=self.model_id,
                 torch_dtype=self.torch_dtype,
                 device=self.device,
             )
-            
-            self.update_callback("status", "Initializing refining model (Whisper-Large-v3)...")
-            self.refining_pipeline = pipeline(
-                "automatic-speech-recognition",
-                model=self.refining_model_id,
-                torch_dtype=self.torch_dtype,
-                device=self.device,
-            )
-            self.update_callback("status", "✅ Models initialized. Starting microphone...")
+            self.update_callback("status", "✅ Model initialized. Starting microphone...")
         except Exception as e:
-            self.update_callback("status", f"❌ Error initializing models: {e}")
+            self.update_callback("status", f"❌ Error initializing model: {e}")
 
     def start(self):
         """Start the transcription engine."""
@@ -109,10 +101,9 @@ class TranscriptionEngine:
         
         self.is_running = True
         
-        threading.Thread(target=self._initialize_models, daemon=True).start()
+        threading.Thread(target=self._initialize_model, daemon=True).start()
         threading.Thread(target=self._audio_input_thread, daemon=True).start()
-        threading.Thread(target=self._streaming_thread, daemon=True).start()
-        threading.Thread(target=self._refining_thread, daemon=True).start()
+        threading.Thread(target=self._transcription_thread, daemon=True).start()
 
     def _signal_handler(self, signum, frame):
         """Handle interrupt signals to save session before exit."""
@@ -126,26 +117,17 @@ class TranscriptionEngine:
         self._save_session()
     
     def _cleanup_memory(self):
-        """Clean up memory and force garbage collection."""
+        """Aggressive memory cleanup."""
         try:
             # Clear audio buffer
             self.audio_buffer = np.array([], dtype=np.float32)
             
-            # Clear queues
+            # Clear queue
             while not self.audio_queue.empty():
                 try:
                     self.audio_queue.get_nowait()
                 except queue.Empty:
                     break
-            
-            while not self.refine_queue.empty():
-                try:
-                    self.refine_queue.get_nowait()
-                except queue.Empty:
-                    break
-            
-            # Clear sentence buffer
-            self.sentence_buffer = ""
             
             # Force garbage collection
             gc.collect()
@@ -154,7 +136,7 @@ class TranscriptionEngine:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            print("Memory cleanup completed")
+            print("🧹 Memory cleanup completed")
         except Exception as e:
             print(f"Error during memory cleanup: {e}")
     
@@ -165,9 +147,9 @@ class TranscriptionEngine:
             memory_info = process.memory_info()
             memory_mb = memory_info.rss / 1024 / 1024
             
-            if memory_mb > 1000:  # If using more than 1GB
-                print(f"⚠️  High memory usage: {memory_mb:.1f} MB")
-                if memory_mb > 2000:  # If using more than 2GB, force cleanup
+            if memory_mb > 500:  # Lower threshold for lightweight version
+                print(f"⚠️  Memory usage: {memory_mb:.1f} MB")
+                if memory_mb > 1000:  # Force cleanup at 1GB
                     print("🧹 Forcing memory cleanup...")
                     self._cleanup_memory()
             
@@ -189,7 +171,7 @@ class TranscriptionEngine:
             print(f"Error saving session: {e}")
 
     def _audio_input_thread(self):
-        """Capture audio from the microphone and put it into a queue."""
+        """Capture audio with aggressive memory management."""
         stream = None
         try:
             self.update_callback("status", "🎤 Initializing microphone...")
@@ -198,7 +180,7 @@ class TranscriptionEngine:
                 channels=1, 
                 rate=self.sample_rate,
                 input=True, 
-                input_device_index=self.input_device_index,  # Use system default
+                input_device_index=self.input_device_index,
                 frames_per_buffer=1024,
                 stream_callback=None
             )
@@ -209,7 +191,7 @@ class TranscriptionEngine:
                     data = stream.read(1024, exception_on_overflow=False)
                     new_data = np.frombuffer(data, dtype=np.float32)
                     
-                    # Prevent buffer from growing too large
+                    # Aggressive buffer management
                     if len(self.audio_buffer) > self.max_buffer_size:
                         # Keep only the most recent data
                         excess = len(self.audio_buffer) - self.max_buffer_size
@@ -221,19 +203,23 @@ class TranscriptionEngine:
                         chunk = self.audio_buffer[:self.chunk_samples].copy()
                         self.audio_buffer = self.audio_buffer[self.chunk_samples:]
                         
-                        # Try to put in queue, but don't block if full
+                        # Try to put in queue, skip if full
                         try:
                             self.audio_queue.put_nowait(chunk)
                         except queue.Full:
-                            # Queue is full, skip this chunk to prevent memory buildup
                             print("⚠️  Audio queue full, skipping chunk")
-                            del chunk  # Explicitly delete to free memory
+                            del chunk
                     
-                    # Check memory usage periodically
+                    # Frequent memory checks
                     current_time = time.time()
                     if current_time - self.last_memory_check > self.memory_check_interval:
                         self._check_memory_usage()
                         self.last_memory_check = current_time
+                    
+                    # Periodic cleanup
+                    if current_time - self.last_cleanup > self.cleanup_interval:
+                        self._cleanup_memory()
+                        self.last_cleanup = current_time
                         
                 except Exception as e:
                     print(f"Audio read error: {e}")
@@ -251,98 +237,38 @@ class TranscriptionEngine:
                 except:
                     pass
 
-
-    def _streaming_thread(self):
-        """Process audio with sentence-aware streaming."""
+    def _transcription_thread(self):
+        """Single-pass transcription with memory management."""
         chunk_id = 0
         while self.is_running:
-            if not self.streaming_pipeline:
+            if not self.pipeline:
                 time.sleep(1)
                 continue
             try:
                 audio_chunk = self.audio_queue.get(timeout=1)
                 
                 # Process audio chunk
-                result = self.streaming_pipeline(audio_chunk)
+                result = self.pipeline(audio_chunk)
                 transcript = result["text"].strip()
                 
                 if transcript and len(transcript) > 2:
-                    # Add to sentence buffer
-                    self.sentence_buffer += " " + transcript
-                    self.sentence_buffer = self.sentence_buffer.strip()
+                    transcript_data = {
+                        "id": chunk_id, 
+                        "text": transcript, 
+                        "status": "Transcribed",
+                        "timestamp": time.time()
+                    }
                     
-                    # Check for sentence boundaries
-                    sentences = self._extract_complete_sentences()
-                    for sentence in sentences:
-                        if sentence.strip():
-                            self.update_callback("transcript", {"id": chunk_id, "text": sentence, "status": "Streaming"})
-                            chunk_id += 1
-                    
-                    # Send to refining queue (copy audio for refining)
-                    try:
-                        self.refine_queue.put_nowait({"id": chunk_id, "audio": audio_chunk.copy()})
-                    except queue.Full:
-                        # Refining queue is full, skip this chunk
-                        print("⚠️  Refining queue full, skipping chunk")
+                    # Save to session data
+                    self.session_transcripts.append(transcript_data)
+                    self.update_callback("transcript", transcript_data)
+                    chunk_id += 1
                 
-                # Explicitly delete audio chunk to free memory
+                # Explicitly delete audio chunk
                 del audio_chunk
                 
             except queue.Empty:
                 continue
             except Exception as e:
-                print(f"Streaming error: {e}")
-                continue
-    
-    def _extract_complete_sentences(self):
-        """Extract complete sentences from the buffer."""
-        sentences = []
-        
-        # Look for sentence endings
-        sentence_endings = ['.', '!', '?']
-        
-        for ending in sentence_endings:
-            while ending in self.sentence_buffer:
-                end_pos = self.sentence_buffer.find(ending)
-                if end_pos != -1:
-                    sentence = self.sentence_buffer[:end_pos + 1].strip()
-                    if len(sentence) > 10:  # Only keep substantial sentences
-                        sentences.append(sentence)
-                    self.sentence_buffer = self.sentence_buffer[end_pos + 1:].strip()
-        
-        return sentences
-
-    def _refining_thread(self):
-        """Process audio with the high-accuracy refining model."""
-        while self.is_running:
-            if not self.refining_pipeline:
-                time.sleep(1)
-                continue
-            try:
-                job = self.refine_queue.get(timeout=1)
-                audio_data = job["audio"]
-                
-                # Process audio chunk
-                result = self.refining_pipeline(audio_data)
-                transcript = result["text"].strip()
-                
-                if transcript and len(transcript) > 2: # Don't update with empty or very short transcripts
-                    transcript_data = {
-                        "id": job["id"], 
-                        "text": transcript, 
-                        "status": "Refined",
-                        "timestamp": time.time()
-                    }
-                    # Save to session data
-                    self.session_transcripts.append(transcript_data)
-                    self.update_callback("transcript", transcript_data)
-                
-                # Explicitly delete audio data to free memory
-                del audio_data
-                del job
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                print(f"Refining error: {e}")
+                print(f"Transcription error: {e}")
                 continue
