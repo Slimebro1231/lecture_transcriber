@@ -65,10 +65,10 @@ class TranscriptionEngine:
         self.is_running = False
         self.audio_buffer = np.array([], dtype=np.float32)
         
-        # Memory management
-        self.max_buffer_size = self.chunk_samples * 2  # Keep only 2 chunks worth
+        # Memory management - less aggressive for 30GB system
+        self.max_buffer_size = self.chunk_samples * 10  # Keep 10 chunks worth (more reasonable)
         self.last_memory_check = time.time()
-        self.memory_check_interval = 30  # Check memory every 30 seconds
+        self.memory_check_interval = 60  # Check memory every 60 seconds
 
         if AUDIO_AVAILABLE:
             self.pyaudio_instance = pyaudio.PyAudio()
@@ -126,26 +126,35 @@ class TranscriptionEngine:
         self._save_session()
     
     def _cleanup_memory(self):
-        """Clean up memory and force garbage collection."""
+        """Clean up memory while preserving sentence structure."""
         try:
-            # Clear audio buffer
-            self.audio_buffer = np.array([], dtype=np.float32)
+            # Only clear excess audio buffer, preserve recent data
+            if len(self.audio_buffer) > self.max_buffer_size:
+                excess = len(self.audio_buffer) - self.max_buffer_size
+                self.audio_buffer = self.audio_buffer[excess:]
+                print(f"Trimmed audio buffer by {excess} samples")
             
-            # Clear queues
-            while not self.audio_queue.empty():
-                try:
-                    self.audio_queue.get_nowait()
-                except queue.Empty:
-                    break
+            # Clear only excess queue items, keep recent ones
+            audio_queue_size = self.audio_queue.qsize()
+            if audio_queue_size > 3:  # Keep 3 most recent
+                for _ in range(audio_queue_size - 3):
+                    try:
+                        self.audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                print(f"Cleared {audio_queue_size - 3} old audio queue items")
             
-            while not self.refine_queue.empty():
-                try:
-                    self.refine_queue.get_nowait()
-                except queue.Empty:
-                    break
+            refine_queue_size = self.refine_queue.qsize()
+            if refine_queue_size > 2:  # Keep 2 most recent
+                for _ in range(refine_queue_size - 2):
+                    try:
+                        self.refine_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                print(f"Cleared {refine_queue_size - 2} old refine queue items")
             
-            # Clear sentence buffer
-            self.sentence_buffer = ""
+            # DON'T clear sentence buffer - preserve sentence structure
+            # self.sentence_buffer = ""  # Commented out to preserve sentences
             
             # Force garbage collection
             gc.collect()
@@ -154,22 +163,23 @@ class TranscriptionEngine:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            print("Memory cleanup completed")
+            print("Memory cleanup completed (preserving sentence structure)")
         except Exception as e:
             print(f"Error during memory cleanup: {e}")
     
     def _check_memory_usage(self):
-        """Check and log memory usage."""
+        """Check and log memory usage - adjusted for 30GB system."""
         try:
             process = psutil.Process()
             memory_info = process.memory_info()
             memory_mb = memory_info.rss / 1024 / 1024
             
-            if memory_mb > 1000:  # If using more than 1GB
+            # More reasonable thresholds for a 30GB system
+            if memory_mb > 8000:  # Warning at 8GB (models + processing)
                 print(f"⚠️  High memory usage: {memory_mb:.1f} MB")
-                if memory_mb > 2000:  # If using more than 2GB, force cleanup
-                    print("🧹 Forcing memory cleanup...")
-                    self._cleanup_memory()
+            if memory_mb > 15000:  # Force cleanup at 15GB (half of available)
+                print("🧹 Forcing memory cleanup...")
+                self._cleanup_memory()
             
             return memory_mb
         except Exception as e:
@@ -225,9 +235,13 @@ class TranscriptionEngine:
                         try:
                             self.audio_queue.put_nowait(chunk)
                         except queue.Full:
-                            # Queue is full, skip this chunk to prevent memory buildup
-                            print("⚠️  Audio queue full, skipping chunk")
-                            del chunk  # Explicitly delete to free memory
+                            # Queue is full, wait a bit and try again
+                            time.sleep(0.1)
+                            try:
+                                self.audio_queue.put_nowait(chunk)
+                            except queue.Full:
+                                print("⚠️  Audio queue persistently full, skipping chunk")
+                                del chunk  # Only delete if persistently full
                     
                     # Check memory usage periodically
                     current_time = time.time()
@@ -282,8 +296,12 @@ class TranscriptionEngine:
                     try:
                         self.refine_queue.put_nowait({"id": chunk_id, "audio": audio_chunk.copy()})
                     except queue.Full:
-                        # Refining queue is full, skip this chunk
-                        print("⚠️  Refining queue full, skipping chunk")
+                        # Refining queue is full, wait a bit and try again
+                        time.sleep(0.1)
+                        try:
+                            self.refine_queue.put_nowait({"id": chunk_id, "audio": audio_chunk.copy()})
+                        except queue.Full:
+                            print("⚠️  Refining queue persistently full, skipping chunk")
                 
                 # Explicitly delete audio chunk to free memory
                 del audio_chunk
